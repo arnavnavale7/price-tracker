@@ -330,10 +330,10 @@ export default function PriceTracker() {
             <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.5, background: "linear-gradient(90deg,#14b8a6,#818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               ⚡ PriceTracker
             </div>
-            <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>Real-time price scraping & comparison · Amazon.in & Flipkart · Prices in ₹</div>
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>Real-time price scraping & comparison · Amazon, Flipkart, Myntra, Snapdeal · Prices in ₹</div>
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            {["Amazon.in", "Flipkart"].map((p) => (
+            {["Amazon.in", "Flipkart", "Myntra", "Snapdeal"].map((p) => (
               <span key={p} style={{ fontSize: 11, color: "#64748b", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, padding: "3px 8px" }}>{p}</span>
             ))}
             <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: backendOnline === null ? "#1e293b" : backendOnline ? "#14532d" : "#7f1d1d", color: backendOnline === null ? "#64748b" : backendOnline ? "#86efac" : "#fca5a5" }}>
@@ -361,7 +361,7 @@ export default function PriceTracker() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <input
               style={{ flex: 1, minWidth: 240, background: "#0f172a", border: "1.5px solid #1e293b", borderRadius: 10, padding: "13px 18px", color: "#e2e8f0", fontSize: 14, outline: "none" }}
-              placeholder="Paste Amazon.in or Flipkart product URL here..."
+              placeholder="Paste a product URL from Amazon, Flipkart, Myntra, or Snapdeal..."
               value={url}
               onChange={(e) => { setUrl(e.target.value); setError(""); }}
               onKeyDown={(e) => e.key === "Enter" && handleTrack()}
@@ -662,7 +662,7 @@ export default function PriceTracker() {
           <div style={{ fontSize: 52, marginBottom: 16 }}>🛒</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e8f0", marginBottom: 10 }}>Track & Compare Product Prices</div>
           <div style={{ fontSize: 14, color: "#475569", lineHeight: 1.7 }}>
-            Paste a product URL from Amazon.in or Flipkart.<br />
+            Paste a product URL from Amazon, Flipkart, Myntra, or Snapdeal.<br />
             We'll scrape the price and automatically compare it across other platforms — all live.
           </div>
         </div>
