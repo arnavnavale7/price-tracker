@@ -890,6 +890,160 @@ def parse_flipkart(html: str) -> dict:
         return parse_with_regex(html, "flipkart")
 
 
+def parse_myntra(html: str) -> dict:
+    """Parse Myntra product page (fashion e-commerce)."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+
+        # Title
+        title = ""
+        h1 = soup.find("h1", class_=re.compile(r"productTitle|title", re.I))
+        if h1:
+            title = clean_text(h1.get_text())
+        if not title:
+            # Try any h1
+            h1 = soup.find("h1")
+            if h1:
+                title = clean_text(h1.get_text())
+
+        # Price — Myntra displays price in span with rupee symbol
+        price = None
+        for el in soup.find_all(["span", "div"], string=re.compile(r"₹|Rs\.?\s*\d")):
+            p = clean_price(el.get_text())
+            if p and p > 100:  # Valid product price
+                price = p
+                break
+
+        # Original price (MRP)
+        mrp = None
+        for el in soup.find_all(["span", "div"], class_=re.compile(r"mrp|original|strikethrough", re.I)):
+            m = clean_price(el.get_text())
+            if m and (not price or m > price):
+                mrp = m
+                break
+
+        # Discount percentage
+        discount = None
+        for el in soup.find_all(["span", "div"], string=re.compile(r"(\d+)%\s*off")):
+            m = re.search(r"(\d+)%", el.get_text())
+            if m:
+                discount = float(m.group(1))
+                break
+
+        # Image
+        image = ""
+        img = soup.find("img", class_=re.compile(r"productImage|main-image", re.I))
+        if img:
+            image = img.get("src", "") or img.get("data-src", "")
+        if not image:
+            og = soup.find("meta", property="og:image")
+            if og:
+                image = og.get("content", "")
+
+        # Rating
+        rating = None
+        for el in soup.find_all(["span", "div"], class_=re.compile(r"rating|stars", re.I)):
+            m = re.search(r"([\d.]+)\s*(?:out of|/)\s*5", el.get_text())
+            if m:
+                rating = float(m.group(1))
+                break
+
+        return {
+            "title": title or "Myntra Product",
+            "current_price": price,
+            "original_price": mrp,
+            "image_url": image,
+            "availability": "In Stock",
+            "rating": rating,
+            "review_count": None,
+            "discount_percent": discount,
+            "currency": "INR",
+        }
+    except ImportError:
+        return parse_with_regex(html, "myntra")
+
+
+def parse_snapdeal(html: str) -> dict:
+    """Parse Snapdeal product page (general e-commerce)."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+
+        # Title — try multiple selectors
+        title = ""
+        for sel in [".pdpHeading", ".prodTitle", "h1.product-title", "h1"]:
+            el = soup.select_one(sel)
+            if el:
+                title = clean_text(el.get_text())
+                if len(title) > 5:
+                    break
+
+        # Price — Snapdeal shows selling price in bold
+        price = None
+        for sel in [".sellingPrice", ".discountedPrice", ".productPrice", "span[itemprop='price']"]:
+            el = soup.select_one(sel)
+            if el:
+                price = clean_price(el.get_text())
+                if price:
+                    break
+
+        # Original price (MRP)
+        mrp = None
+        for sel in [".mrpPrice", ".originalPrice", ".strikethrough"]:
+            el = soup.select_one(sel)
+            if el:
+                mrp = clean_price(el.get_text())
+                if mrp and (not price or mrp > price):
+                    break
+
+        # Discount
+        discount = None
+        for el in soup.find_all(["span", "div"], string=re.compile(r"(\d+)%\s*off")):
+            m = re.search(r"(\d+)%", el.get_text())
+            if m:
+                discount = float(m.group(1))
+                break
+
+        # Image
+        image = ""
+        img = soup.find("img", class_=re.compile(r"productImage|mainImage", re.I))
+        if img:
+            image = img.get("src", "") or img.get("data-src", "")
+        if not image:
+            og = soup.find("meta", property="og:image")
+            if og:
+                image = og.get("content", "")
+
+        # Rating
+        rating = None
+        rating_el = soup.find("span", class_=re.compile(r"rating|stars", re.I))
+        if rating_el:
+            m = re.search(r"([\d.]+)", rating_el.get_text())
+            if m:
+                rating = float(m.group(1))
+
+        # Availability
+        availability = "In Stock"
+        oos = soup.find(string=re.compile(r"out of stock|unavailable", re.I))
+        if oos:
+            availability = "Out of Stock"
+
+        return {
+            "title": title or "Snapdeal Product",
+            "current_price": price,
+            "original_price": mrp,
+            "image_url": image,
+            "availability": availability,
+            "rating": rating,
+            "review_count": None,
+            "discount_percent": discount,
+            "currency": "INR",
+        }
+    except ImportError:
+        return parse_with_regex(html, "snapdeal")
+
+
 def parse_generic_jsonld(html: str, platform: str) -> dict:
     """Extract from JSON-LD structured data."""
     for match in re.finditer(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.DOTALL):
@@ -1045,6 +1199,10 @@ async def scrape_product(url: str, platform: str) -> dict:
         result = parse_amazon(html)
     elif platform == "flipkart":
         result = parse_flipkart(html)
+    elif platform == "myntra":
+        result = parse_myntra(html)
+    elif platform == "snapdeal":
+        result = parse_snapdeal(html)
     else:
         result = parse_generic_jsonld(html, platform)
         if not result.get("current_price"):
@@ -1256,6 +1414,8 @@ def _build_search_urls(query: str) -> dict:
     return {
         "amazon":   f"https://www.amazon.in/s?k={q}",
         "flipkart": f"https://www.flipkart.com/search?q={q}",
+        "myntra":   f"https://www.myntra.com/search?q={q}",
+        "snapdeal": f"https://www.snapdeal.com/search?keyword={q}",
     }
 
 
@@ -1428,6 +1588,152 @@ def _parse_flipkart_search(html: str) -> Optional[dict]:
     return None
 
 
+def _parse_myntra_search(html: str) -> Optional[dict]:
+    """Parse Myntra search results page to get the first real product."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+
+        # Myntra search result containers
+        results = soup.select('li[data-productid], .productCardImg')
+        if not results:
+            results = soup.select('.productContainer, .productCardImg')
+
+        for result in results[:8]:
+            # Title — usually in productBrand or productName
+            title = ""
+            for sel in ['.productBrand', '.productName', '.brand', 'h3, h4']:
+                el = result.select_one(sel)
+                if el:
+                    title = clean_text(el.get_text())
+                    if len(title) > 3:
+                        break
+            if not title or len(title) < 3:
+                continue
+
+            # Price
+            price = None
+            for sel in ['.productPrice, .discountedPriceText', '.discountedPrice', '.newPrice']:
+                el = result.select_one(sel)
+                if el:
+                    price = clean_price(el.get_text())
+                    if price:
+                        break
+            if not price:
+                continue
+
+            # Image
+            image = ""
+            img_el = result.select_one('img[src*="images.myntra"]')
+            if img_el:
+                image = img_el.get("src", "")
+
+            # Rating
+            rating = None
+            for sel in ['.productRating', '.ratingNumber']:
+                el = result.select_one(sel)
+                if el:
+                    m = re.search(r'([\d.]+)', el.get_text())
+                    if m:
+                        rating = float(m.group(1))
+                        break
+
+            # Product URL
+            product_url = ""
+            link_el = result.select_one('a[href*="/p/"]') or result.find_parent('a')
+            if link_el and link_el.name == 'a':
+                href = link_el.get("href", "")
+                if href.startswith("/"):
+                    product_url = f"https://www.myntra.com{href}"
+                elif href.startswith("http"):
+                    product_url = href
+
+            return {
+                "platform": "myntra",
+                "title": title[:150],
+                "price": price,
+                "image_url": image,
+                "product_url": product_url,
+                "rating": rating,
+            }
+    except Exception as e:
+        print(f"[Myntra Search Parse Error] {e}")
+    return None
+
+
+def _parse_snapdeal_search(html: str) -> Optional[dict]:
+    """Parse Snapdeal search results page to get the first real product."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+
+        # Snapdeal search result containers
+        results = soup.select('div.productCardImg, .productContainer')
+        if not results:
+            results = soup.select('[data-productid], .productCard')
+
+        for result in results[:8]:
+            # Title
+            title = ""
+            for sel in ['.productTitle', '.productName', '.prdName', 'h2, h3']:
+                el = result.select_one(sel)
+                if el:
+                    title = clean_text(el.get_text())
+                    if len(title) > 3:
+                        break
+            if not title or len(title) < 3:
+                continue
+
+            # Price
+            price = None
+            for sel in ['.productPrice, .discountedPrice', '.newPrice', '.rsPriceTag']:
+                el = result.select_one(sel)
+                if el:
+                    price = clean_price(el.get_text())
+                    if price:
+                        break
+            if not price:
+                continue
+
+            # Image
+            image = ""
+            img_el = result.select_one('img[src*="snapdeal"]')
+            if img_el:
+                image = img_el.get("src", "")
+
+            # Rating
+            rating = None
+            for sel in ['.productRating', '.ratingNumber, .reviewCount']:
+                el = result.select_one(sel)
+                if el:
+                    m = re.search(r'([\d.]+)', el.get_text())
+                    if m:
+                        rating = float(m.group(1))
+                        break
+
+            # Product URL
+            product_url = ""
+            link_el = result.select_one('a[href*="/product/"]') or result.find_parent('a')
+            if link_el and link_el.name == 'a':
+                href = link_el.get("href", "")
+                if href.startswith("/"):
+                    product_url = f"https://www.snapdeal.com{href}"
+                elif href.startswith("http"):
+                    product_url = href
+
+            return {
+                "platform": "snapdeal",
+                "title": title[:150],
+                "price": price,
+                "image_url": image,
+                "product_url": product_url,
+                "rating": rating,
+            }
+    except Exception as e:
+        print(f"[Snapdeal Search Parse Error] {e}")
+    return None
+
+
 async def _scrape_search_page(platform: str, search_url: str) -> Optional[dict]:
     """Scrape a search results page for the top result."""
     print(f"\n[Compare] Searching {platform}: {search_url[:80]}...")
@@ -1457,6 +1763,10 @@ async def _scrape_search_page(platform: str, search_url: str) -> Optional[dict]:
         return _parse_amazon_search(html)
     elif platform == "flipkart":
         return _parse_flipkart_search(html)
+    elif platform == "myntra":
+        return _parse_myntra_search(html)
+    elif platform == "snapdeal":
+        return _parse_snapdeal_search(html)
 
     return None
 
